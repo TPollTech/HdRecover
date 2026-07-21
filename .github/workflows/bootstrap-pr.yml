@@ -17,18 +17,42 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 0
+          fetch-depth: 1
+          show-progress: false
 
       - name: Extrair fonte auditada
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
           if [ ! -f hdrecover-source-0.5.4.tar.xz ]; then
             echo "A fonte já foi expandida nesta branch."
             exit 0
           fi
-          tar -xJf hdrecover-source-0.5.4.tar.xz
+          rm -f bootstrap-error.txt
+          {
+            echo "Tamanho e hash do pacote:"
+            stat -c '%s bytes' hdrecover-source-0.5.4.tar.xz
+            sha256sum hdrecover-source-0.5.4.tar.xz
+            file hdrecover-source-0.5.4.tar.xz
+            echo "Teste XZ:"
+            xz -t hdrecover-source-0.5.4.tar.xz
+            echo "Extração:"
+            tar -xJf hdrecover-source-0.5.4.tar.xz
+          } > bootstrap-diagnostic.txt 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            mv bootstrap-diagnostic.txt bootstrap-error.txt
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add bootstrap-error.txt
+            git commit -m "ci: registrar falha ao expandir fonte"
+            git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+            cat bootstrap-error.txt
+            exit "$status"
+          fi
+          rm -f bootstrap-diagnostic.txt bootstrap-error.txt
           rm -f hdrecover-source-0.5.4.tar.xz
+          rm -f .bootstrap-trigger
           rm -f .github/workflows/bootstrap.yml
           rm -f .github/workflows/bootstrap-pr.yml
 
