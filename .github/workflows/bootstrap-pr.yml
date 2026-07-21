@@ -36,6 +36,7 @@ jobs:
             exit 0
           fi
           rm -f bootstrap-error.txt
+          status=0
           {
             echo "Tamanho e hash do pacote:"
             stat -c '%s bytes' hdrecover-source-0.5.4.tar.xz
@@ -45,8 +46,7 @@ jobs:
             xz -t hdrecover-source-0.5.4.tar.xz
             echo "Extração:"
             tar -xJf hdrecover-source-0.5.4.tar.xz
-          } > bootstrap-diagnostic.txt 2>&1
-          status=$?
+          } > bootstrap-diagnostic.txt 2>&1 || status=$?
           if [ "$status" -ne 0 ]; then
             mv bootstrap-diagnostic.txt bootstrap-error.txt
             cat bootstrap-error.txt
@@ -54,7 +54,7 @@ jobs:
           fi
           rm -f bootstrap-diagnostic.txt bootstrap-error.txt
           rm -f hdrecover-source-0.5.4.tar.xz
-          rm -f .bootstrap-trigger .bootstrap-rerun
+          rm -f .bootstrap-trigger .bootstrap-rerun .bootstrap-rerun3 .bootstrap-rerun4
           rm -f .github/workflows/bootstrap.yml
           rm -f .github/workflows/bootstrap-pr.yml
 
