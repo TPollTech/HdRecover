@@ -1,0 +1,16 @@
+HdRecover 0.5.3
+===============
+
+- Novo modo “Migrar Windows para SSD menor — inteligente”.
+- HD de 500 GB pode ser migrado para SSD de 480 GB quando o layout e os dados
+  couberem com segurança.
+- Análise de partições e tamanho mínimo pelo serviço de armazenamento do Windows.
+- Redução temporária e restauração automática da última partição NTFS.
+- Cópia limitada à capacidade física do SSD menor.
+- Adaptação de GPT para destino menor ou maior.
+- Adaptação de MBR e remoção segura de partição de recuperação que ultrapasse
+  o fim do SSD.
+- Plano JSON e script de restauração de emergência.
+- Mensagens da interface atualizadas para diferenciar clone exato, VSS completo
+  e migração inteligente.
+- Mantidas as correções de interface, menus, DPI e Windows 10 da versão 0.5.2.

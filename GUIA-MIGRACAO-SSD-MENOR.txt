@@ -1,0 +1,39 @@
+GUIA — MIGRAÇÃO INTELIGENTE PARA SSD MENOR
+==========================================
+
+COMO FUNCIONA
+- O programa usa Get-Partition, Get-Volume e Get-PartitionSupportedSize do
+  Windows para analisar cada partição.
+- O tamanho usado sozinho não é suficiente: o Windows também informa o ponto
+  mínimo permitido, considerando arquivos que não podem ser movidos.
+- Se as partições essenciais couberem, a operação continua.
+- Se for necessário, a última partição NTFS é reduzida temporariamente por
+  Resize-Partition.
+- VSS cria uma leitura consistente dos volumes enquanto o Windows está ligado.
+- A cópia preserva boot, sistema, programas, usuários, registros, arquivos,
+  partições e identificadores do disco.
+- A tabela MBR/GPT do SSD é corrigida para a capacidade física menor.
+- Uma partição de recuperação localizada fora do limite pode ser omitida do
+  SSD. Isso não costuma impedir o boot, mas o Windows RE pode precisar ser
+  reativado depois.
+- Ao final, o HD de origem volta ao tamanho anterior automaticamente.
+
+QUANDO O PROGRAMA BLOQUEIA
+- Dados e reserva de segurança não cabem no SSD.
+- Arquivos imóveis impedem a redução necessária.
+- A última partição essencial não é NTFS.
+- Disco dinâmico, Storage Spaces ou layout desconhecido.
+- MBR com partições lógicas/estendidas que exigiriam reconstrução.
+- Tamanhos de setor lógico diferentes.
+- SSD selecionado contém o Windows em uso.
+
+ARQUIVO DE EMERGÊNCIA
+Se o computador desligar durante a etapa de redução, procure na pasta de
+relatórios da sessão:
+
+RESTAURAR-PARTICAO-ORIGEM.cmd
+
+Execute-o como administrador. Ele tenta devolver a partição do HD original ao
+tamanho que possuía antes da migração.
+
+NÃO USE O SSD SE A OPERAÇÃO FOR CANCELADA OU TERMINAR COM ERRO.

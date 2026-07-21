@@ -1,0 +1,18 @@
+VALIDAÇÕES EXECUTADAS
+=====================
+
+- go test ./...
+- go test -race ./recovery
+- go vet ./...
+- Compilação Windows GUI e diagnóstico para amd64.
+- Compilação Windows GUI e diagnóstico para 386.
+- Testes sintéticos de clone, pausa, retomada e setores ilegíveis.
+- Teste de GPT para disco maior.
+- Teste de GPT para SSD menor, mantendo partição essencial e omitindo Recovery.
+- Teste de MBR para SSD menor, omitindo partição Recovery 0x27.
+- Validação CRC dos cabeçalhos GPT.
+- Verificação da integridade do ZIP.
+
+Não foi possível conectar fisicamente o HD Toshiba e o SSD JMicron mostrados na
+foto ao ambiente de compilação. O teste real de hardware ainda precisa ser feito
+com o HD original preservado.
