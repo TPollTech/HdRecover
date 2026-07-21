@@ -1,0 +1,47 @@
+name: Expandir fonte auditada
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  expandir:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout da branch da auditoria
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Extrair fonte auditada
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f hdrecover-source-0.5.4.tar.xz ]; then
+            echo "A fonte já foi expandida nesta branch."
+            exit 0
+          fi
+          tar -xJf hdrecover-source-0.5.4.tar.xz
+          rm -f hdrecover-source-0.5.4.tar.xz
+          rm -f .github/workflows/bootstrap.yml
+          rm -f .github/workflows/bootstrap-pr.yml
+
+      - name: Commitar fonte na branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet && git diff --cached --quiet && [ -z "$(git status --porcelain)" ]; then
+            echo "Nenhuma alteração pendente."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: auditoria completa e endurecimento de segurança 0.5.4"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
