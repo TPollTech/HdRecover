@@ -13,15 +13,22 @@ jobs:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout da branch da auditoria
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 1
-          show-progress: false
+      - name: Preparar branch da auditoria
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          git init -q
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch -q --depth=1 origin "${HEAD_REF}"
+          git checkout -q -B "${HEAD_REF}" FETCH_HEAD
 
       - name: Extrair fonte auditada
         shell: bash
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           set -uo pipefail
           if [ ! -f hdrecover-source-0.5.4.tar.xz ]; then
@@ -42,22 +49,19 @@ jobs:
           status=$?
           if [ "$status" -ne 0 ]; then
             mv bootstrap-diagnostic.txt bootstrap-error.txt
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add bootstrap-error.txt
-            git commit -m "ci: registrar falha ao expandir fonte"
-            git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
             cat bootstrap-error.txt
             exit "$status"
           fi
           rm -f bootstrap-diagnostic.txt bootstrap-error.txt
           rm -f hdrecover-source-0.5.4.tar.xz
-          rm -f .bootstrap-trigger
+          rm -f .bootstrap-trigger .bootstrap-rerun
           rm -f .github/workflows/bootstrap.yml
           rm -f .github/workflows/bootstrap-pr.yml
 
       - name: Commitar fonte na branch
         shell: bash
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           set -euo pipefail
           if git diff --quiet && git diff --cached --quiet && [ -z "$(git status --porcelain)" ]; then
@@ -68,4 +72,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "fix: auditoria completa e endurecimento de segurança 0.5.4"
-          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+          git push origin "HEAD:${HEAD_REF}"
