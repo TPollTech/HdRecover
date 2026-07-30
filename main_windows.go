@@ -1773,6 +1773,10 @@ func startClone() {
 		messageBox(app.hwnd, "O Windows não confirmou os metadados de segurança da origem e do destino. Atualize a lista de discos; se a identificação continuar incompleta, a clonagem permanecerá bloqueada.", appTitle, MB_OK|MB_ICONERROR)
 		return
 	}
+	if !source.HasHardwareIdentity() || !target.HasHardwareIdentity() {
+		messageBox(app.hwnd, "A clonagem exige serial ou identificador físico confirmado nos dois discos. Conecte-os por interfaces que exponham a identidade do hardware e atualize a lista.", appTitle, MB_OK|MB_ICONERROR)
+		return
+	}
 	if target.Size < source.Size && !smartMode {
 		messageBox(app.hwnd, "O SSD de destino é menor que o disco de origem. Selecione “Migrar Windows para SSD menor — inteligente” para analisar os dados e reduzir somente a partição NTFS necessária.", appTitle, MB_OK|MB_ICONWARNING)
 		return

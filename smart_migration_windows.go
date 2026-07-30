@@ -130,6 +130,9 @@ func buildSmartMigrationPlan(source, target diskInfo, layout smartStorageLayout)
 	if source.Index == target.Index {
 		return plan, errors.New("origem e destino apontam para o mesmo disco")
 	}
+	if !source.HasHardwareIdentity() || !target.HasHardwareIdentity() {
+		return plan, errors.New("a migração exige serial ou identificador físico confirmado na origem e no destino")
+	}
 	if source.BytesPerSector != target.BytesPerSector {
 		return plan, fmt.Errorf("os discos usam setores lógicos diferentes (%d e %d bytes)", source.BytesPerSector, target.BytesPerSector)
 	}
@@ -369,12 +372,53 @@ func writeSmartPlanFiles(plan smartMigrationPlan, reportDir string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(reportDir, "PLANO_MIGRACAO_INTELIGENTE.json"), data, 0o644); err != nil {
+	planPath := filepath.Join(reportDir, "PLANO_MIGRACAO_INTELIGENTE.json")
+	if err := writeAndSyncFile(planPath, data, 0o600); err != nil {
 		return err
 	}
-	check := smartPlanSourceCheckScript(plan)
-	cmd := fmt.Sprintf("@echo off\r\nchcp 65001 >nul\r\nnet session >nul 2>&1 || (powershell -NoProfile -Command \"Start-Process -FilePath '%%~f0' -Verb RunAs\" & exit /b)\r\npowershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command \"$ErrorActionPreference='Stop'; %s Resize-Partition -DiskNumber %d -PartitionNumber %d -Size ([UInt64]%d); Update-HostStorageCache\"\r\nif errorlevel 1 (echo Falha ao restaurar: a identidade do disco ou o redimensionamento nao conferiu. & pause & exit /b 1)\r\necho Particao restaurada com sucesso.\r\npause\r\n", check, plan.SourceDisk, plan.ShrinkPartitionNumber, plan.ShrinkOriginalSize)
-	return os.WriteFile(filepath.Join(reportDir, "RESTAURAR-PARTICAO-ORIGEM.cmd"), []byte(cmd), 0o644)
+	ps1 := `param(
+    [Parameter(Mandatory = $true)]
+    [string]$PlanPath
+)
+
+$ErrorActionPreference = 'Stop'
+$plan = Get-Content -LiteralPath $PlanPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+if ([int]$plan.version -ne 2) { throw 'Versao de plano nao suportada.' }
+$disk = Get-Disk -Number ([int]$plan.source_disk) -ErrorAction Stop
+if ([Int64]$disk.Size -ne [Int64]$plan.source_physical_size) { throw 'Tamanho do disco divergente.' }
+$expectedUid = ([string]$plan.source_unique_id).Trim()
+$expectedSerial = ([string]$plan.source_serial).Trim()
+if ($expectedUid -eq '' -and $expectedSerial -eq '') { throw 'Plano sem identidade fisica da origem.' }
+if ($expectedUid -ne '' -and ([string]$disk.UniqueId).Trim() -ne $expectedUid) { throw 'UniqueId divergente.' }
+if ($expectedSerial -ne '' -and ([string]$disk.SerialNumber).Trim() -ne $expectedSerial) { throw 'Serial divergente.' }
+$partition = Get-Partition -DiskNumber ([int]$plan.source_disk) -PartitionNumber ([int]$plan.shrink_partition_number) -ErrorAction Stop
+$difference = [Math]::Abs([Int64]$partition.Size - [Int64]$plan.shrink_new_size)
+if ($difference -gt 1048576) { throw 'A particao nao esta no tamanho temporario previsto.' }
+Resize-Partition -DiskNumber ([int]$plan.source_disk) -PartitionNumber ([int]$plan.shrink_partition_number) -Size ([UInt64]$plan.shrink_original_size) -ErrorAction Stop
+Update-HostStorageCache
+Write-Host 'Particao restaurada com sucesso.'
+`
+	if err := writeAndSyncFile(filepath.Join(reportDir, "RESTAURAR-PARTICAO-ORIGEM.ps1"), []byte(ps1), 0o600); err != nil {
+		return err
+	}
+	cmd := "@echo off\r\nchcp 65001 >nul\r\nnet session >nul 2>&1 || (echo Execute este arquivo como administrador. & pause & exit /b 1)\r\npowershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File \"%~dp0RESTAURAR-PARTICAO-ORIGEM.ps1\" -PlanPath \"%~dp0PLANO_MIGRACAO_INTELIGENTE.json\"\r\nif errorlevel 1 (echo Falha ao restaurar: a identidade do disco, o estado da particao ou o redimensionamento nao conferiu. & pause & exit /b 1)\r\npause\r\n"
+	return writeAndSyncFile(filepath.Join(reportDir, "RESTAURAR-PARTICAO-ORIGEM.cmd"), []byte(cmd), 0o600)
+}
+
+func writeAndSyncFile(path string, data []byte, mode os.FileMode) error {
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
+	if err != nil {
+		return err
+	}
+	if _, err := file.Write(data); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
+	return file.Close()
 }
 
 func validateSmartPlanSource(plan smartMigrationPlan) error {
