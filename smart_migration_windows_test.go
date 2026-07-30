@@ -2,7 +2,12 @@
 
 package main
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 func TestBuildSmartMigrationPlanDoesNotDropGenericHiddenPartition(t *testing.T) {
 	source := diskInfo{Index: 0, Size: 500 * 1024 * 1024, BytesPerSector: 512, UniqueID: "source"}
@@ -55,5 +60,34 @@ func TestBuildSmartMigrationPlanDropsExplicitRecoveryPartition(t *testing.T) {
 	}
 	if len(plan.DroppedRecoveryPartitions) != 1 || plan.DroppedRecoveryPartitions[0].PartitionNumber != 2 {
 		t.Fatalf("expected one explicit recovery partition to be dropped: %+v", plan)
+	}
+}
+
+func TestRestoreScriptTreatsDiskIdentityAsData(t *testing.T) {
+	plan := smartMigrationPlan{
+		Version:               2,
+		SourceDisk:            3,
+		SourceUniqueID:        `uid'; Write-Host INJECTED; '`,
+		SourceSerial:          `serial&INJECTED`,
+		SourcePhysicalSize:    500 * 1024 * 1024,
+		RequiresShrink:        true,
+		ShrinkPartitionNumber: 4,
+		ShrinkOriginalSize:    400 * 1024 * 1024,
+		ShrinkNewSize:         300 * 1024 * 1024,
+	}
+	dir := t.TempDir()
+	if err := writeSmartPlanFiles(plan, dir); err != nil {
+		t.Fatal(err)
+	}
+	script, err := os.ReadFile(filepath.Join(dir, "RESTAURAR-PARTICAO-ORIGEM.ps1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(script)
+	if strings.Contains(text, plan.SourceUniqueID) || strings.Contains(text, plan.SourceSerial) {
+		t.Fatal("disk identity was interpolated into executable PowerShell")
+	}
+	if !strings.Contains(text, "ConvertFrom-Json") {
+		t.Fatal("restore script must load identity from the plan as data")
 	}
 }

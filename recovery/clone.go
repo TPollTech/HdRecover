@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -671,6 +672,12 @@ func adjustMBRForDestination(d CloneDestination, mbr []byte, destinationSize, se
 	totalSectors := uint64(destinationSize / sectorSize)
 	changed := false
 	dropped := 0
+	type partitionRange struct {
+		number int
+		first  uint64
+		end    uint64
+	}
+	ranges := make([]partitionRange, 0, 4)
 	for i := 0; i < 4; i++ {
 		off := 446 + i*16
 		partType := mbr[off+4]
@@ -679,8 +686,12 @@ func adjustMBRForDestination(d CloneDestination, mbr []byte, destinationSize, se
 		if partType == 0 || count == 0 {
 			continue
 		}
+		if start == 0 {
+			return false, dropped, fmt.Errorf("a partição MBR %d começa no setor zero", i+1)
+		}
 		end := start + count
 		if end <= totalSectors {
+			ranges = append(ranges, partitionRange{number: i + 1, first: start, end: end})
 			continue
 		}
 		if isDroppableMBRPartitionType(partType) {
@@ -692,6 +703,12 @@ func adjustMBRForDestination(d CloneDestination, mbr []byte, destinationSize, se
 			continue
 		}
 		return false, dropped, fmt.Errorf("a partição MBR %d (tipo 0x%02X) termina além do SSD; reduza essa partição antes de migrar", i+1, partType)
+	}
+	sort.Slice(ranges, func(i, j int) bool { return ranges[i].first < ranges[j].first })
+	for i := 1; i < len(ranges); i++ {
+		if ranges[i].first < ranges[i-1].end {
+			return false, dropped, fmt.Errorf("as partições MBR %d e %d se sobrepõem", ranges[i-1].number, ranges[i].number)
+		}
 	}
 	if !changed {
 		return false, 0, nil
@@ -774,6 +791,12 @@ func adjustGPTForDestination(d CloneDestination, mbr []byte, destinationSize, se
 	}
 
 	dropped := 0
+	type gptPartitionRange struct {
+		number uint32
+		first  uint64
+		last   uint64
+	}
+	ranges := make([]gptPartitionRange, 0, entryCount)
 	for i := uint32(0); i < entryCount; i++ {
 		off := int(i * entrySize)
 		entry := entries[off : off+int(entrySize)]
@@ -782,10 +805,11 @@ func adjustGPTForDestination(d CloneDestination, mbr []byte, destinationSize, se
 		}
 		first := binary.LittleEndian.Uint64(entry[32:40])
 		last := binary.LittleEndian.Uint64(entry[40:48])
-		if first == 0 || last < first {
+		if first < firstUsableLBA || last < first {
 			return false, dropped, fmt.Errorf("a entrada GPT %d é inválida", i+1)
 		}
 		if last <= newLastUsableLBA {
+			ranges = append(ranges, gptPartitionRange{number: i + 1, first: first, last: last})
 			continue
 		}
 		if isWindowsRecoveryGPTType(entry[:16]) {
@@ -796,6 +820,12 @@ func adjustGPTForDestination(d CloneDestination, mbr []byte, destinationSize, se
 			continue
 		}
 		return false, dropped, fmt.Errorf("a partição GPT %d termina além do SSD e não é uma partição de recuperação descartável", i+1)
+	}
+	sort.Slice(ranges, func(i, j int) bool { return ranges[i].first < ranges[j].first })
+	for i := 1; i < len(ranges); i++ {
+		if ranges[i].first <= ranges[i-1].last {
+			return false, dropped, fmt.Errorf("as partições GPT %d e %d se sobrepõem", ranges[i-1].number, ranges[i].number)
+		}
 	}
 
 	protectiveEntry := -1

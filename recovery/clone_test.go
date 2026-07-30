@@ -453,3 +453,32 @@ func TestAdjustGPTRejectsInvalidHeaderCRC(t *testing.T) {
 		t.Fatalf("expected invalid GPT CRC to be rejected, got %v", err)
 	}
 }
+
+func TestAdjustMBRRejectsOverlappingPartitions(t *testing.T) {
+	const sector = 512
+	const sectors = 8192
+	dir := t.TempDir()
+	path := filepath.Join(dir, "overlapping-mbr.bin")
+	data := make([]byte, sectors*sector)
+	data[510] = 0x55
+	data[511] = 0xAA
+	data[446+4] = 0x07
+	binary.LittleEndian.PutUint32(data[446+8:446+12], 2048)
+	binary.LittleEndian.PutUint32(data[446+12:446+16], 3000)
+	second := 446 + 16
+	data[second+4] = 0x07
+	binary.LittleEndian.PutUint32(data[second+8:second+12], 4096)
+	binary.LittleEndian.PutUint32(data[second+12:second+16], 1000)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	disk, err := os.OpenFile(path, os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer disk.Close()
+	_, _, err = adjustPartitionTableForDestination(disk, int64(len(data)), sector)
+	if err == nil || !strings.Contains(err.Error(), "sobrepõem") {
+		t.Fatalf("expected overlapping MBR partitions to be rejected, got %v", err)
+	}
+}
