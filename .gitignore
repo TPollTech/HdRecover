@@ -1,0 +1,15 @@
+/dist/
+/*.exe
+/*.zip
+/*.tar
+/*.tar.gz
+/*.tar.xz
+*.tmp
+*.log
+CLONAGEM_SESSAO.json
+CLONAGEM_BLOCOS.ndjson
+RELATORIO_CLONAGEM.*
+RESUMO_CLONAGEM.csv
+MAPA_DE_SETORES_RUINS.*
+PLANO_MIGRACAO_INTELIGENTE.json
+RESTAURAR-PARTICAO-ORIGEM.cmd

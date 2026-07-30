@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Testes e análise estática
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Configurar Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: 1.26.x
+          cache: true
+
+      - name: Verificar formatação
+        shell: bash
+        run: |
+          mapfile -d '' files < <(find . -type f -name '*.go' -print0)
+          test -z "$(gofmt -l "${files[@]}")"
+
+      - name: Testes
+        run: go test ./...
+
+      - name: Testes com detector de concorrência
+        run: go test -race ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Vulnerabilidades conhecidas
+        shell: bash
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
+          "$(go env GOPATH)/bin/govulncheck" ./...
+
+  windows:
+    name: Windows ${{ matrix.arch }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - amd64
+          - "386"
+    env:
+      CGO_ENABLED: "0"
+      GOARCH: ${{ matrix.arch }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Configurar Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: 1.26.x
+          cache: true
+
+      - name: Testes Windows
+        run: go test ./...
+
+      - name: Compilar interface Windows
+        shell: pwsh
+        run: |
+          go build -trimpath -ldflags="-s -w -H=windowsgui" -o "HdRecover-${{ matrix.arch }}.exe" .
+
+  artifacts:
+    name: Artefatos reproduzíveis
+    runs-on: ubuntu-latest
+    needs:
+      - quality
+      - windows
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Configurar Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: 1.26.x
+          cache: true
+
+      - name: Compilar Windows 64 e 32 bits
+        shell: bash
+        run: |
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w -H=windowsgui" -o dist/HdRecover-windows-amd64.exe .
+          CGO_ENABLED=0 GOOS=windows GOARCH=386 go build -trimpath -ldflags="-s -w -H=windowsgui" -o dist/HdRecover-windows-386.exe .
+          cd dist
+          sha256sum *.exe > SHA256SUMS.txt
+
+      - name: Publicar somente como artefato da execução
+        uses: actions/upload-artifact@v4
+        with:
+          name: HdRecover-windows
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
